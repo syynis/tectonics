@@ -236,9 +236,11 @@ impl Lithosphere {
             }
         }
 
+        /*
         if occ_map.iter().all(|x| x.is_some()) {
             println!("occupancy is ok");
         }
+        */
 
         Self {
             plates,
@@ -464,7 +466,7 @@ impl Lithosphere {
                                         // Other subduct
 
                                         let uplift = uplift(other_sample.alt);
-                                        println!("uplift {}", uplift);
+                                        //println!("uplift {}", uplift);
                                         self.occ_map[wpos_idx] = Some(plate_idx);
                                         self.height[wpos_idx] = sample.alt + uplift;
                                     }

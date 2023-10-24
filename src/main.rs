@@ -1,5 +1,8 @@
 use minifb::{Key, KeyRepeat, Window, WindowOptions};
-use noise::{MultiFractal, NoiseFn, Seedable};
+use noise::{
+    utils::{NoiseMapBuilder, PlaneMapBuilder},
+    Fbm, Perlin,
+};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
 use vek::*;
@@ -77,9 +80,21 @@ fn main() {
 
     let mut buf = vec![0; W * H];
     let mut win = Window::new("Tectonic Plates", W, H, WindowOptions::default()).unwrap();
+    let fbm = Fbm::<Perlin>::new(0);
 
-    let alt = vec![0.; W * H];
+    let plane = PlaneMapBuilder::<_, 2>::new(&fbm)
+        .set_size(W, H)
+        .set_x_bounds(-1.0, 1.0)
+        .set_y_bounds(-1.0, 1.0)
+        .build();
+    let mut alt = vec![0.; W * H];
+    (0..W).for_each(|x| {
+        (0..H).for_each(|y| {
+            alt[x + y * W] = plane.get_value(x, y).clamp(-1., 1.);
+        })
+    });
 
+    /*
     println!(
         "max {}",
         alt.iter()
@@ -92,6 +107,7 @@ fn main() {
             .reduce(|acc, e| if acc < e { acc } else { e })
             .unwrap()
     );
+    */
 
     let params = GlobalParameters {
         max_plate_speed: 10,     // TODO value
