@@ -3,14 +3,18 @@ use noise::{
     utils::{NoiseMapBuilder, PlaneMapBuilder},
     Fbm, Perlin,
 };
+use plate::{CrustKind, CrustSample};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
+use util::wrap_pos;
 use vek::*;
 
-use crate::tectonics::{wrap_pos, CrustKind, CrustSample, GlobalParameters, Lithosphere};
+use crate::lithosphere::{GlobalParameters, Lithosphere};
 
 pub mod grid;
-pub mod tectonics;
+pub mod lithosphere;
+pub mod plate;
+pub mod util;
 
 const SIZE_LG: usize = 10;
 const ZOOM_LG: usize = 0;
