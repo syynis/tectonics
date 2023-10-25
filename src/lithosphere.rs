@@ -6,7 +6,7 @@ use crate::{
     grid::Grid,
     plate::{CrustKind, CrustSample, Plate, PlateArea},
     uniform_idx_as_vec2,
-    util::wrap_pos,
+    util::{wrap_pos, CARDINALS},
     vec2_as_uniform_idx, MapSizeLg, Rng,
 };
 
@@ -280,7 +280,7 @@ impl Lithosphere {
                                         // Other subduct
 
                                         let uplift = uplift(other_sample.alt);
-                                        //println!("uplift {}", uplift);
+                                        println!("uplift {}", uplift);
                                         self.occ_map[wpos_idx] = Some(plate_idx);
                                         self.height[wpos_idx] = sample.alt + uplift;
                                     }
@@ -316,6 +316,35 @@ impl Lithosphere {
     }
 
     pub fn calculate_border(&mut self) {
-        for plate in self.plates.iter_mut() {}
+        let mut borders = Vec::new();
+
+        for (plate_idx, plate) in self.plates.iter().enumerate() {
+            let mut border = Vec::new();
+
+            for (rpos, _) in plate.samples.iter().filter(|(_, s)| s.is_some()) {
+                let wpos = wrap_pos(self.dimension, plate.origin + rpos);
+                let wpos_idx = vec2_as_uniform_idx(self.dimension_lg, wpos);
+                let occ = self.occ_map[wpos_idx];
+                let mut is_border = false;
+                for neighbor in CARDINALS.iter() {
+                    let npos = wrap_pos(self.dimension, wpos + neighbor);
+                    let npos_idx = vec2_as_uniform_idx(self.dimension_lg, npos);
+                    let n_occ = self.occ_map[npos_idx];
+                    if n_occ != occ {
+                        is_border = true;
+                    }
+                }
+
+                if is_border {
+                    border.push(rpos);
+                }
+            }
+
+            borders.push(border);
+        }
+
+        for (idx, border) in borders.iter().enumerate() {
+            self.plates[idx].border = border.clone();
+        }
     }
 }

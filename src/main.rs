@@ -23,21 +23,7 @@ const SIZE: usize = 1 << (SIZE_LG - ZOOM_LG);
 const SIZE_WINDOW: usize = 1 << SIZE_LG;
 const W: usize = SIZE_WINDOW;
 const H: usize = SIZE_WINDOW;
-const NUM_PLATES: usize = 16;
-
-const NEIGHS: [Vec2<i32>; 9] = {
-    [
-        Vec2::new(0, 0),
-        Vec2::new(0, 1),
-        Vec2::new(1, 1),
-        Vec2::new(1, 0),
-        Vec2::new(1, -1),
-        Vec2::new(0, -1),
-        Vec2::new(-1, -1),
-        Vec2::new(-1, 0),
-        Vec2::new(-1, 1),
-    ]
-};
+const NUM_PLATES: usize = 24;
 
 #[derive(Clone, Copy, Debug)]
 pub struct MapSizeLg(pub Vec2<u32>);
@@ -94,7 +80,7 @@ fn main() {
     let mut alt = vec![0.; W * H];
     (0..W).for_each(|x| {
         (0..H).for_each(|y| {
-            alt[x + y * W] = plane.get_value(x, y).clamp(-1., 1.);
+            alt[x + y * W] = plane.get_value(x, y).clamp(-1., 1.) * max_height as f64;
         })
     });
 
@@ -126,9 +112,10 @@ fn main() {
     let mut current_plate: usize = 14.min(NUM_PLATES - 1);
     let mut view_single_plate = false;
     let mut render_dimension_border = true;
+    let mut render_plate_border = false;
     let alt_factor = 255. / 2.;
     let steps_before_render = -1;
-
+    let white = u32::from_le_bytes([199, 241, 251, 0]);
     for _ in 0..=steps_before_render {
         lithosphere.step();
     }
@@ -137,7 +124,7 @@ fn main() {
         if redraw {
             redraw = false;
 
-            buf = vec![0; W * H];
+            buf = vec![white; W * H];
 
             let sample_color = |sample: &CrustSample| -> (u8, u8, u8) {
                 let alt = sample.alt / max_height;
@@ -192,6 +179,19 @@ fn main() {
                 }
             }
 
+            if view_single_plate && render_plate_border {
+                lithosphere.calculate_border();
+                let plate = &lithosphere.plates[current_plate];
+                let border = &plate.border;
+                let origin = plate.origin;
+                let dimension = lithosphere.dimension;
+
+                for rpos in border.iter() {
+                    let wpos = wrap_pos(dimension, origin + rpos);
+                    set(wpos, &mut buf, (50, 50, 255));
+                }
+            }
+
             /*
             for (idx, plate) in lithosphere.plates.iter().enumerate() {
                 if view_single_plate && idx != current_plate {
@@ -241,6 +241,11 @@ fn main() {
 
         if win.is_key_pressed(Key::B, KeyRepeat::No) {
             render_dimension_border = !render_dimension_border;
+            redraw = true;
+        }
+
+        if win.is_key_pressed(Key::V, KeyRepeat::No) {
+            render_plate_border = !render_plate_border;
             redraw = true;
         }
 
