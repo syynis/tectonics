@@ -1,7 +1,12 @@
 use hashbrown::HashSet;
 use vek::{Aabr, Vec2};
 
-use crate::{grid::Grid, lithosphere::Alt, util::wrap_pos};
+use crate::{
+    distance_transform::distance_transform,
+    grid::Grid,
+    lithosphere::Alt,
+    util::{wrap_pos, CARDINALS},
+};
 
 #[derive(Clone, Debug)]
 pub enum CrustKind {
@@ -30,6 +35,7 @@ pub struct PlateArea {
 pub struct Plate {
     pub samples: Grid<Option<CrustSample>>,
     pub border: HashSet<Vec2<i32>>,
+    pub border_dist: Grid<f64>,
     pub mass: f32,
     pub com: Vec2<i32>,
     pub vel: Vec2<i32>,
@@ -192,5 +198,37 @@ impl Plate {
                 let res = self.samples.set(rpos, Some(sample));
             }
         }
+    }
+
+    pub fn compute_border(&mut self) {
+        let mut border: HashSet<Vec2<i32>> = HashSet::new();
+
+        for (rpos, _) in self.samples.iter().filter(|(_, s)| s.is_some()) {
+            let mut is_border = false;
+            for neighbor in CARDINALS.iter() {
+                let npos = wrap_pos(self.dimension, rpos + neighbor);
+                let nsample = self.samples.get(npos);
+                if nsample.unwrap().is_none() {
+                    is_border = true;
+                }
+            }
+
+            if is_border {
+                border.insert(rpos);
+            }
+        }
+        self.border = border;
+    }
+
+    pub fn compute_distance_transform(&mut self) {
+        let grid = self
+            .samples
+            .iter()
+            .map(|(pos, elem)| {
+                let is_border = self.border.contains(&pos);
+                elem.clone().map_or(0, |_| (!is_border) as u8)
+            })
+            .collect::<Vec<u8>>();
+        self.border_dist = distance_transform(&Grid::from_raw(self.dimension, grid))
     }
 }

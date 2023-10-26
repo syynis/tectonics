@@ -3,11 +3,10 @@ use rand::distributions::Uniform;
 use vek::*;
 
 use crate::{
-    distance_transform::distance_transform,
     grid::Grid,
     plate::{CrustKind, CrustSample, Plate, PlateArea},
     uniform_idx_as_vec2,
-    util::{wrap_pos, CARDINALS},
+    util::wrap_pos,
     vec2_as_uniform_idx, MapSizeLg, Rng,
 };
 
@@ -19,8 +18,9 @@ pub struct GlobalParameters {
     pub subduction_distance: u32,
     pub min_altitude: u32,
     pub max_altitude: u32,
-    pub base_uplift: u32,
+    pub base_uplift: f64,
 }
+
 pub struct Lithosphere {
     pub plates: Vec<Plate>,
     pub occ_map: Vec<Option<usize>>,
@@ -182,6 +182,7 @@ impl Lithosphere {
             let plate = Plate {
                 samples,
                 border: HashSet::new(),
+                border_dist: Grid::new(Vec2::new(0, 0), 0.),
                 mass: plate as f32, // TODO hack for debugging
                 com: centers[plate],
                 vel: Vec2::new(rng.gen_range(-3..=3), rng.gen_range(-3..=3)),
@@ -202,6 +203,8 @@ impl Lithosphere {
 
         for plate in &mut self.plates {
             plate.step();
+            plate.compute_border();
+            plate.compute_distance_transform();
         }
 
         // Fill gaps with oceanic crust
@@ -234,76 +237,90 @@ impl Lithosphere {
 
         self.occ_map.fill(None);
         self.height.fill(0.);
+
+        let speed_transfer = |p1: &Plate, p2: &Plate| -> f64 {
+            let relative_speed = (p1.vel - p2.vel).map(|x| x.abs());
+            (relative_speed.magnitude_squared() as f64)
+                / (self.parameters.max_plate_speed.pow(2) as f64)
+        };
+        let speed_transfer = |p1: &Plate, p2: &Plate| -> f64 { speed_transfer(p1, p2).sqrt() };
+        let height_transfer = |alt: Alt| -> Alt {
+            ((alt + self.parameters.min_altitude as f64)
+                / (self.parameters.max_altitude as f64 + self.parameters.min_altitude as f64))
+                .powi(2)
+        };
+        let distance_transfer = |dt: &Grid<f64>, pos: Vec2<i32>| -> f64 {
+            let dist_sq = dt.get(pos).unwrap_or(&0.0);
+            1.
+        };
+        // TODO distance transfer
+        let uplift = |alt: Alt, p1: &Plate, p2: &Plate, dt: &Grid<f64>, pos: Vec2<i32>| -> f64 {
+            self.parameters.base_uplift
+                * speed_transfer(p1, p2)
+                * height_transfer(alt)
+                * distance_transfer(dt, pos)
+        };
         for (plate_idx, plate) in self.plates.iter().enumerate() {
+            let dt = &plate.border_dist;
             for (rpos, sample) in plate.samples.iter() {
-                if let Some(sample) = sample {
-                    let wpos = wrap_pos(self.dimension, plate.origin + rpos);
-                    let wpos_idx = vec2_as_uniform_idx(self.dimension_lg, wpos);
-                    let occupancy = self.occ_map[wpos_idx];
+                let Some(sample) = sample else {
+                    continue;
+                };
+                let wpos = wrap_pos(self.dimension, plate.origin + rpos);
+                let wpos_idx = vec2_as_uniform_idx(self.dimension_lg, wpos);
+                let occupancy = self.occ_map[wpos_idx];
 
-                    if let Some(other_plate_idx) = occupancy {
-                        let other_plate = &self.plates[other_plate_idx];
-                        let other_rpos = other_plate
-                            .wpos_to_rpos(wpos)
-                            .expect("Occupancy tells us this plate contains wpos");
-                        let other_sample = other_plate.samples.get(other_rpos).expect(
-                            "Occupancy tells us this plate contains rpos (derived from wpos)",
-                        );
+                if let Some(other_plate_idx) = occupancy {
+                    let other_plate = &self.plates[other_plate_idx];
+                    let other_dt = &other_plate.border_dist;
+                    let other_rpos = other_plate
+                        .wpos_to_rpos(wpos)
+                        .expect("Occupancy tells us this plate contains wpos");
+                    let other_sample = other_plate
+                        .samples
+                        .get(other_rpos)
+                        .expect("Occupancy tells us this plate contains rpos (derived from wpos)");
 
-                        let relative_speed = (plate.vel - other_plate.vel).map(|x| x.abs());
+                    let Some(other_sample) = other_sample else {
+                        continue;
+                    };
+                    let is_oceanic = matches!(sample.kind, CrustKind::Oceanic);
+                    let is_other_oceanic = matches!(other_sample.kind, CrustKind::Oceanic);
 
-                        if let Some(other_sample) = other_sample {
-                            let is_oceanic = matches!(sample.kind, CrustKind::Oceanic);
-                            let is_other_oceanic = matches!(other_sample.kind, CrustKind::Oceanic);
+                    // we have to handle oceanic - oceanic, oceanic - continential
 
-                            // we have to handle oceanic - oceanic, oceanic - continential
-
-                            let speed_transfer = (relative_speed.magnitude_squared() as f64)
-                                / (self.parameters.max_plate_speed.pow(2) as f64);
-                            let speed_transfer = speed_transfer.sqrt();
-                            let height_transfer = |alt: Alt| -> Alt {
-                                ((alt + self.parameters.min_altitude as f64)
-                                    / (self.parameters.max_altitude as f64
-                                        + self.parameters.min_altitude as f64))
-                                    .powi(2)
-                            };
-
-                            // TODO distance transfer
-
-                            let uplift =
-                                |alt: Alt| -> f64 { speed_transfer * height_transfer(alt) };
-                            if is_oceanic {
-                                if is_other_oceanic {
-                                    // Oceanic - Oceanic
-                                    if sample.age > other_sample.age {
-                                        // We subduct
-                                    } else {
-                                        // Other subduct
-
-                                        let uplift = uplift(other_sample.alt);
-                                        println!("uplift {}", uplift);
-                                        self.occ_map[wpos_idx] = Some(plate_idx);
-                                        self.height[wpos_idx] = sample.alt + uplift;
-                                    }
-                                } else {
-                                    // Oceanic - Continential
-                                    // We subduct
-                                }
+                    if is_oceanic {
+                        if is_other_oceanic {
+                            // Oceanic - Oceanic
+                            if sample.age > other_sample.age {
+                                // We subduct
                             } else {
-                                if is_other_oceanic {
-                                    // Other Subduct
-                                    self.occ_map[wpos_idx] = Some(plate_idx);
-                                    self.height[wpos_idx] = sample.alt;
-                                } else {
-                                    // TODO forced subduction
-                                }
+                                // Other subduct
+                                let uplift =
+                                    uplift(other_sample.alt, &plate, &other_plate, dt, other_rpos);
+                                //println!("uplift {}", uplift);
+                                self.occ_map[wpos_idx] = Some(plate_idx);
+                                self.height[wpos_idx] = sample.alt + uplift;
                             }
+                        } else {
+                            // Oceanic - Continential
+                            // We subduct
                         }
                     } else {
-                        // Noone here yet
-                        self.occ_map[wpos_idx] = Some(plate_idx);
-                        self.height[wpos_idx] = sample.alt;
+                        if is_other_oceanic {
+                            // Other Subduct
+                            let uplift =
+                                uplift(other_sample.alt, &plate, &other_plate, dt, other_rpos);
+                            self.occ_map[wpos_idx] = Some(plate_idx);
+                            self.height[wpos_idx] = sample.alt;
+                        } else {
+                            // TODO forced subduction
+                        }
                     }
+                } else {
+                    // Noone here yet
+                    self.occ_map[wpos_idx] = Some(plate_idx);
+                    self.height[wpos_idx] = sample.alt;
                 }
             }
         }
@@ -317,48 +334,8 @@ impl Lithosphere {
     }
 
     pub fn calculate_border(&mut self) {
-        let mut borders = Vec::new();
-
-        for (plate_idx, plate) in self.plates.iter().enumerate() {
-            let mut border: HashSet<Vec2<i32>> = HashSet::new();
-
-            for (rpos, _) in plate.samples.iter().filter(|(_, s)| s.is_some()) {
-                let wpos = wrap_pos(self.dimension, plate.origin + rpos);
-                let wpos_idx = vec2_as_uniform_idx(self.dimension_lg, wpos);
-                let occ = self.occ_map[wpos_idx];
-                let mut is_border = false;
-                for neighbor in CARDINALS.iter() {
-                    let npos = wrap_pos(self.dimension, wpos + neighbor);
-                    let npos_idx = vec2_as_uniform_idx(self.dimension_lg, npos);
-                    let n_occ = self.occ_map[npos_idx];
-                    if n_occ != occ {
-                        is_border = true;
-                    }
-                }
-
-                if is_border {
-                    border.insert(rpos);
-                }
-            }
-
-            borders.push(border);
+        for plate in self.plates.iter_mut() {
+            plate.compute_border();
         }
-
-        for (idx, border) in borders.iter().enumerate() {
-            self.plates[idx].border = border.clone();
-        }
-    }
-
-    pub fn calculate_distance_transform(&self, plate_idx: usize) -> Grid<f64> {
-        let plate = &self.plates[plate_idx];
-        let grid = plate
-            .samples
-            .iter()
-            .map(|(pos, elem)| {
-                let is_border = plate.border.contains(&pos);
-                elem.clone().map_or(0, |_| (!is_border) as u8)
-            })
-            .collect::<Vec<u8>>();
-        distance_transform(&Grid::from_raw(plate.dimension, grid))
     }
 }

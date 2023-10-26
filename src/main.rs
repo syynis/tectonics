@@ -17,14 +17,14 @@ pub mod lithosphere;
 pub mod plate;
 pub mod util;
 
-const SIZE_LG: usize = 9;
-const ZOOM_LG: usize = 1;
+const SIZE_LG: usize = 10;
+const ZOOM_LG: usize = 2;
 const SIZE_ZOOM_LG: usize = SIZE_LG - ZOOM_LG;
 const SIZE: usize = 1 << SIZE_ZOOM_LG;
 const SIZE_WINDOW: usize = 1 << SIZE_LG;
 const W: usize = SIZE_WINDOW;
 const H: usize = SIZE_WINDOW;
-const NUM_PLATES: usize = 24;
+const NUM_PLATES: usize = 4;
 
 #[derive(Clone, Copy, Debug)]
 pub struct MapSizeLg(pub Vec2<u32>);
@@ -78,10 +78,10 @@ fn main() {
         .set_x_bounds(-1.0, 1.0)
         .set_y_bounds(-1.0, 1.0)
         .build();
-    let mut alt = vec![0.; W * H];
-    (0..W).for_each(|x| {
-        (0..H).for_each(|y| {
-            alt[x + y * W] = plane.get_value(x, y).clamp(-1., 1.) * max_height as f64;
+    let mut alt = vec![0.; SIZE * SIZE];
+    (0..SIZE).for_each(|x| {
+        (0..SIZE).for_each(|y| {
+            alt[x + y * SIZE] = plane.get_value(x, y).clamp(-1., 1.) * max_height as f64;
         })
     });
 
@@ -101,11 +101,11 @@ fn main() {
     */
 
     let params = GlobalParameters {
-        max_plate_speed: 10,     // TODO value
-        subduction_distance: 50, // TODO value
+        max_plate_speed: 10,          // TODO value
+        subduction_distance: 18 * 18, // TODO value
         min_altitude: max_height as u32,
         max_altitude: max_height as u32,
-        base_uplift: 0, // TODO value
+        base_uplift: 0.006, // TODO value
     };
     let mut lithosphere = Lithosphere::generate(map_size_lg, params, NUM_PLATES, &mut rng, &alt);
 
@@ -113,7 +113,8 @@ fn main() {
     let mut current_plate: usize = 0.min(NUM_PLATES - 1);
     let mut view_single_plate = false;
     let mut render_dimension_border = true;
-    let mut render_plate_border = false;
+    let mut render_plate_border = true;
+    let mut render_distance = true;
     let alt_factor = 255. / 2.;
     let steps_before_render = -1;
     let white = u32::from_le_bytes([199, 241, 251, 0]);
@@ -138,7 +139,17 @@ fn main() {
                 color
             };
 
-            for idx in 0..(W * H) {
+            let alt_color = |alt| -> (u8, u8, u8) {
+                let alt = alt / max_height;
+                let alt = (alt_factor * (alt + 1.)) as u8;
+                if alt > 127 {
+                    (0, alt, 0)
+                } else {
+                    (alt, 0, 0)
+                }
+            };
+
+            for idx in 0..(SIZE * SIZE) {
                 let plate_idx = lithosphere.occ_map[idx].expect("everything should be occupied");
                 if view_single_plate && plate_idx != current_plate {
                     continue;
@@ -155,7 +166,11 @@ fn main() {
                     .expect("should be valid rpos")
                     .as_ref()
                     .expect("rpos should have crust sample");
-                let color = sample_color(sample);
+                let color = if false {
+                    sample_color(sample)
+                } else {
+                    alt_color(lithosphere.height[idx])
+                };
                 let pos = wrap_pos(lithosphere.dimension, plate.origin + rpos);
                 set(pos, &mut buf, color);
             }
@@ -177,6 +192,20 @@ fn main() {
                     set(pos, &mut buf, (100, 100, 100));
                     let pos = wrap_pos(lithosphere.dimension, Vec2::new(end.x, y));
                     set(pos, &mut buf, (100, 100, 100));
+                }
+            }
+
+            if view_single_plate && render_distance {
+                let plate = &mut lithosphere.plates[current_plate];
+                plate.compute_border();
+                plate.compute_distance_transform();
+                let dt = &plate.border_dist;
+                for (rpos, val) in dt.iter() {
+                    let wpos = wrap_pos(lithosphere.dimension, plate.origin + rpos);
+                    let alt = (val / (256 >> ZOOM_LG) as f64).min(1.);
+                    let alt = (255. * alt) as u8;
+
+                    set(wpos, &mut buf, (alt, alt, alt));
                 }
             }
 
@@ -264,11 +293,8 @@ fn main() {
         }
 
         if win.is_key_pressed(Key::D, KeyRepeat::No) {
-            if view_single_plate {
-                let plate = &mut lithosphere.plates[current_plate];
-                plate.step();
-                redraw = true;
-            }
+            render_distance = !render_distance;
+            redraw = true;
         }
 
         win.update_with_buffer(&buf, W, H).unwrap();
