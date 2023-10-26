@@ -11,15 +11,16 @@ use vek::*;
 
 use crate::lithosphere::{GlobalParameters, Lithosphere};
 
+pub mod distance_transform;
 pub mod grid;
 pub mod lithosphere;
 pub mod plate;
 pub mod util;
 
-const SIZE_LG: usize = 10;
-const ZOOM_LG: usize = 0;
+const SIZE_LG: usize = 9;
+const ZOOM_LG: usize = 1;
 const SIZE_ZOOM_LG: usize = SIZE_LG - ZOOM_LG;
-const SIZE: usize = 1 << (SIZE_LG - ZOOM_LG);
+const SIZE: usize = 1 << SIZE_ZOOM_LG;
 const SIZE_WINDOW: usize = 1 << SIZE_LG;
 const W: usize = SIZE_WINDOW;
 const H: usize = SIZE_WINDOW;
@@ -109,7 +110,7 @@ fn main() {
     let mut lithosphere = Lithosphere::generate(map_size_lg, params, NUM_PLATES, &mut rng, &alt);
 
     let mut redraw = true;
-    let mut current_plate: usize = 14.min(NUM_PLATES - 1);
+    let mut current_plate: usize = 0.min(NUM_PLATES - 1);
     let mut view_single_plate = false;
     let mut render_dimension_border = true;
     let mut render_plate_border = false;
@@ -191,22 +192,6 @@ fn main() {
                     set(wpos, &mut buf, (50, 50, 255));
                 }
             }
-
-            /*
-            for (idx, plate) in lithosphere.plates.iter().enumerate() {
-                if view_single_plate && idx != current_plate {
-                    continue;
-                }
-                for (pos, sample) in plate.samples.iter() {
-                    if let Some(sample) = sample {
-                        let color = sample_color(sample);
-                        let pos = wrap_pos(lithosphere.dimension, plate.origin + pos);
-                        set(pos, &mut buf, color);
-                    }
-                }
-
-            }
-            */
         }
 
         if win.is_key_pressed(Key::P, KeyRepeat::No) {

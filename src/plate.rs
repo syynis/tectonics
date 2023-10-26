@@ -1,3 +1,4 @@
+use hashbrown::HashSet;
 use vek::{Aabr, Vec2};
 
 use crate::{grid::Grid, lithosphere::Alt, util::wrap_pos};
@@ -28,7 +29,7 @@ pub struct PlateArea {
 
 pub struct Plate {
     pub samples: Grid<Option<CrustSample>>,
-    pub border: Vec<Vec2<i32>>,
+    pub border: HashSet<Vec2<i32>>,
     pub mass: f32,
     pub com: Vec2<i32>,
     pub vel: Vec2<i32>,

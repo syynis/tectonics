@@ -3,6 +3,7 @@ use rand::distributions::Uniform;
 use vek::*;
 
 use crate::{
+    distance_transform::distance_transform,
     grid::Grid,
     plate::{CrustKind, CrustSample, Plate, PlateArea},
     uniform_idx_as_vec2,
@@ -180,7 +181,7 @@ impl Lithosphere {
             });
             let plate = Plate {
                 samples,
-                border: area.border.clone(),
+                border: HashSet::new(),
                 mass: plate as f32, // TODO hack for debugging
                 com: centers[plate],
                 vel: Vec2::new(rng.gen_range(-3..=3), rng.gen_range(-3..=3)),
@@ -319,7 +320,7 @@ impl Lithosphere {
         let mut borders = Vec::new();
 
         for (plate_idx, plate) in self.plates.iter().enumerate() {
-            let mut border = Vec::new();
+            let mut border: HashSet<Vec2<i32>> = HashSet::new();
 
             for (rpos, _) in plate.samples.iter().filter(|(_, s)| s.is_some()) {
                 let wpos = wrap_pos(self.dimension, plate.origin + rpos);
@@ -336,7 +337,7 @@ impl Lithosphere {
                 }
 
                 if is_border {
-                    border.push(rpos);
+                    border.insert(rpos);
                 }
             }
 
@@ -346,5 +347,18 @@ impl Lithosphere {
         for (idx, border) in borders.iter().enumerate() {
             self.plates[idx].border = border.clone();
         }
+    }
+
+    pub fn calculate_distance_transform(&self, plate_idx: usize) -> Grid<f64> {
+        let plate = &self.plates[plate_idx];
+        let grid = plate
+            .samples
+            .iter()
+            .map(|(pos, elem)| {
+                let is_border = plate.border.contains(&pos);
+                elem.clone().map_or(0, |_| (!is_border) as u8)
+            })
+            .collect::<Vec<u8>>();
+        distance_transform(&Grid::from_raw(plate.dimension, grid))
     }
 }
