@@ -12,10 +12,10 @@ use crate::{
 
 pub type Alt = f64;
 
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 pub struct GlobalParameters {
-    pub max_plate_speed: u32,
-    pub subduction_distance: u32,
+    pub max_plate_speed: i32,
+    pub subduction_distance: f64,
     pub min_altitude: u32,
     pub max_altitude: u32,
     pub base_uplift: f64,
@@ -39,7 +39,7 @@ impl Lithosphere {
         rng: &mut impl Rng,
         alt: &[Alt],
     ) -> Self {
-        let plates = Self::create_plates(map_size_lg, num_plates, rng, alt);
+        let plates = Self::create_plates(map_size_lg, num_plates, rng, alt, parameters);
         let mut occ_map = vec![None; map_size_lg.chunks_len()];
 
         for (plate_idx, plate) in plates.iter().enumerate() {
@@ -73,6 +73,7 @@ impl Lithosphere {
         num_plates: usize,
         rng: &mut impl Rng,
         alt: &[Alt],
+        parameters: GlobalParameters,
     ) -> Vec<Plate> {
         let mut plate_area: Vec<PlateArea> = Vec::new();
         let map_sz = map_size_lg.chunks().as_::<i32>();
@@ -185,7 +186,10 @@ impl Lithosphere {
                 border_dist: Grid::new(Vec2::new(0, 0), 0.),
                 mass: plate as f32, // TODO hack for debugging
                 com: centers[plate],
-                vel: Vec2::new(rng.gen_range(-3..=3), rng.gen_range(-3..=3)),
+                vel: Vec2::new(
+                    rng.gen_range(-parameters.max_plate_speed..=parameters.max_plate_speed),
+                    rng.gen_range(-parameters.max_plate_speed..=parameters.max_plate_speed),
+                ),
                 rot: 0.0,
                 origin, // TODO probably want a float position too for more variable velocities
                 dimension: area.dimension,
@@ -240,25 +244,35 @@ impl Lithosphere {
 
         let speed_transfer = |p1: &Plate, p2: &Plate| -> f64 {
             let relative_speed = (p1.vel - p2.vel).map(|x| x.abs());
-            (relative_speed.magnitude_squared() as f64)
-                / (self.parameters.max_plate_speed.pow(2) as f64)
+            ((relative_speed.magnitude_squared() as f64)
+                / (self.parameters.max_plate_speed.pow(2) as f64))
+                .clamp(0., 1.)
         };
         let speed_transfer = |p1: &Plate, p2: &Plate| -> f64 { speed_transfer(p1, p2).sqrt() };
         let height_transfer = |alt: Alt| -> Alt {
             ((alt + self.parameters.min_altitude as f64)
                 / (self.parameters.max_altitude as f64 + self.parameters.min_altitude as f64))
                 .powi(2)
+                .clamp(0., 1.)
         };
         let distance_transfer = |dt: &Grid<f64>, pos: Vec2<i32>| -> f64 {
-            let dist_sq = dt.get(pos).unwrap_or(&0.0);
-            1.
+            let dist_sq = dt
+                .get(pos)
+                .unwrap_or(&0.0)
+                .clamp(0., self.parameters.subduction_distance.powi(2));
+            1. - dist_sq / self.parameters.subduction_distance.powi(2)
         };
         // TODO distance transfer
         let uplift = |alt: Alt, p1: &Plate, p2: &Plate, dt: &Grid<f64>, pos: Vec2<i32>| -> f64 {
-            self.parameters.base_uplift
-                * speed_transfer(p1, p2)
-                * height_transfer(alt)
-                * distance_transfer(dt, pos)
+            let speed = speed_transfer(p1, p2);
+            let height = height_transfer(alt);
+            let dist = distance_transfer(dt, pos);
+            let uplift = self.parameters.base_uplift * speed * height * dist;
+            println!(
+                "speed {:.3},\t height {:.3},\t dist {:.3},\t uplift {:.6}\t",
+                speed, height, dist, uplift
+            );
+            uplift
         };
         for (plate_idx, plate) in self.plates.iter().enumerate() {
             let dt = &plate.border_dist;
@@ -288,7 +302,7 @@ impl Lithosphere {
                     let is_other_oceanic = matches!(other_sample.kind, CrustKind::Oceanic);
 
                     // we have to handle oceanic - oceanic, oceanic - continential
-
+                    let uplift = uplift(other_sample.alt, &plate, &other_plate, dt, rpos);
                     if is_oceanic {
                         if is_other_oceanic {
                             // Oceanic - Oceanic
@@ -296,9 +310,6 @@ impl Lithosphere {
                                 // We subduct
                             } else {
                                 // Other subduct
-                                let uplift =
-                                    uplift(other_sample.alt, &plate, &other_plate, dt, other_rpos);
-                                //println!("uplift {}", uplift);
                                 self.occ_map[wpos_idx] = Some(plate_idx);
                                 self.height[wpos_idx] = sample.alt + uplift;
                             }
@@ -309,10 +320,8 @@ impl Lithosphere {
                     } else {
                         if is_other_oceanic {
                             // Other Subduct
-                            let uplift =
-                                uplift(other_sample.alt, &plate, &other_plate, dt, other_rpos);
                             self.occ_map[wpos_idx] = Some(plate_idx);
-                            self.height[wpos_idx] = sample.alt;
+                            self.height[wpos_idx] = sample.alt + uplift;
                         } else {
                             // TODO forced subduction
                         }

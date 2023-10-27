@@ -18,7 +18,7 @@ pub mod plate;
 pub mod util;
 
 const SIZE_LG: usize = 10;
-const ZOOM_LG: usize = 2;
+const ZOOM_LG: usize = 1;
 const SIZE_ZOOM_LG: usize = SIZE_LG - ZOOM_LG;
 const SIZE: usize = 1 << SIZE_ZOOM_LG;
 const SIZE_WINDOW: usize = 1 << SIZE_LG;
@@ -64,7 +64,7 @@ pub fn vec2_as_uniform_idx(map_size_lg: MapSizeLg, idx: Vec2<i32>) -> usize {
 
 fn main() {
     let map_size_lg = MapSizeLg::new(Vec2::new(SIZE_ZOOM_LG as u32, SIZE_ZOOM_LG as u32));
-    let seed = 1337;
+    let seed = 0;
     let max_height = 2048.;
 
     let mut rng = ChaChaRng::from_seed(rng_state(seed));
@@ -101,11 +101,11 @@ fn main() {
     */
 
     let params = GlobalParameters {
-        max_plate_speed: 10,          // TODO value
-        subduction_distance: 18 * 18, // TODO value
+        max_plate_speed: 8,       // TODO value
+        subduction_distance: 8.0, // TODO value
         min_altitude: max_height as u32,
         max_altitude: max_height as u32,
-        base_uplift: 0.006, // TODO value
+        base_uplift: 0.006 * 1000., // TODO value
     };
     let mut lithosphere = Lithosphere::generate(map_size_lg, params, NUM_PLATES, &mut rng, &alt);
 
