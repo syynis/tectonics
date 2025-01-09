@@ -15,6 +15,7 @@ pub mod distance_transform;
 pub mod grid;
 pub mod lithosphere;
 pub mod plate;
+pub mod poisson;
 pub mod util;
 
 const SIZE_LG: usize = 10;
@@ -24,7 +25,7 @@ const SIZE: usize = 1 << SIZE_ZOOM_LG;
 const SIZE_WINDOW: usize = 1 << SIZE_LG;
 const W: usize = SIZE_WINDOW;
 const H: usize = SIZE_WINDOW;
-const NUM_PLATES: usize = 4;
+const NUM_PLATES: usize = 16;
 
 #[derive(Clone, Copy, Debug)]
 pub struct MapSizeLg(pub Vec2<u32>);
@@ -151,7 +152,10 @@ fn main() {
 
             for idx in 0..(SIZE * SIZE) {
                 let plate_idx = lithosphere.occ_map[idx].expect("everything should be occupied");
-                if view_single_plate && plate_idx != current_plate {
+                if view_single_plate
+                    && plate_idx != current_plate
+                    && (plate_idx + 1) != current_plate
+                {
                     continue;
                 }
 

@@ -231,4 +231,12 @@ impl Plate {
             .collect::<Vec<u8>>();
         self.border_dist = distance_transform(&Grid::from_raw(self.dimension, grid))
     }
+
+    pub fn aabr(&self) -> Aabr<i32> {
+        Aabr {
+            min: self.origin,
+            max: self.origin + self.dimension,
+        }
+        .made_valid()
+    }
 }

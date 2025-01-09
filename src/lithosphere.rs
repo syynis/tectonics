@@ -274,6 +274,33 @@ impl Lithosphere {
             );
             uplift
         };
+
+        for plate_idx in 0..self.plates.len() {
+            let plate = &self.plates[plate_idx];
+            for other_plate_idx in (plate_idx + 1)..self.plates.len() {
+                let other_plate = &self.plates[other_plate_idx];
+                let intersection = plate.aabr().intersection(other_plate.aabr()).made_valid();
+                let intersection = plate.aabr().intersection(intersection);
+                println!("p {}, po {}", plate_idx, other_plate_idx);
+                println!(
+                    "origin {}, other origin {}",
+                    plate.origin, other_plate.origin
+                );
+                println!(
+                    "dim {}, other_dim {}",
+                    plate.dimension, other_plate.dimension
+                );
+                println!("intersection {:?}", intersection);
+                for x in intersection.min.x..intersection.max.x {
+                    for y in intersection.min.y..intersection.max.y {
+                        let rpos = plate.origin + Vec2::new(x, y);
+                        let other_rpos = other_plate.origin + Vec2::new(x, y);
+                        let sample = plate.samples.get(rpos).expect("Test");
+                        let other_sample = other_plate.samples.get(other_rpos).expect("Test Other");
+                    }
+                }
+            }
+        }
         for (plate_idx, plate) in self.plates.iter().enumerate() {
             let dt = &plate.border_dist;
             for (rpos, sample) in plate.samples.iter() {
