@@ -41,14 +41,14 @@ impl PoissonSampler {
         // Init grid
         let mut grid = vec![None; size_scaled.x as usize * size_scaled.y as usize];
 
-        let insert_grid = |p: Vec2<f32>, v: usize| {
-            let grid_idx: Vec2<i32> = size_scaled * ((*p - min) / size).as_();
+        let insert_grid = |grid: &mut Vec<Option<usize>>, p: Vec2<f32>, v: usize| {
+            let grid_idx: Vec2<i32> = size_scaled * ((p - min) / size).as_();
             grid[grid_idx.x as usize * size_scaled.y as usize + grid_idx.y as usize] = Some(v);
         };
 
         // Which cells occupied by existing points already
         for (p_idx, p) in self.points.iter().enumerate() {
-            insert_grid(p, p_idx);
+            insert_grid(&mut grid, *p, p_idx);
         }
 
         // Closest existing point near our preferred point
@@ -92,7 +92,7 @@ impl PoissonSampler {
 
             if free {
                 self.points.push(npos);
-                insert_grid(npos, self.points.len() - 1);
+                insert_grid(&mut grid, npos, self.points.len() - 1);
                 res = Some(npos);
                 break;
             }
@@ -116,8 +116,8 @@ impl PoissonSampler {
         let size_scaled: Vec2<i32> = (size / length).ceil().as_();
         // Init grid
         let mut grid = vec![None; size_scaled.x as usize * size_scaled.y as usize];
-        let insert_grid = |p: Vec2<f32>, v: usize| {
-            let grid_idx: Vec2<i32> = size_scaled * ((*p - min) / size).as_();
+        let insert_grid = |grid: &mut Vec<Option<usize>>, p: Vec2<f32>, v: usize| {
+            let grid_idx: Vec2<i32> = size_scaled * ((p - min) / size).as_();
             grid[grid_idx.x as usize * size_scaled.y as usize + grid_idx.y as usize] = Some(v);
         };
 
@@ -133,11 +133,11 @@ impl PoissonSampler {
         }
 
         // Attempt to find cell next to target which is not occupied
-        for _ in 0..attempts {
+        for _ in 0..k {
             let nr = rng.gen_range(radius..2.0 * radius);
             let nt = rng.gen_range(0.0..TAU);
 
-            let npos = target + nr * Vec2::new(nt.cos(), nt.sin());
+            let npos = nr * Vec2::new(nt.cos(), nt.sin());
             let ind: Vec2<i32> = size_scaled * ((npos - min) / size).as_();
 
             let mut free = true;
