@@ -1,8 +1,8 @@
 use std::f32::consts::{PI, SQRT_2, TAU};
 
-use rand::Rng;
+use rand::{seq::SliceRandom, Rng};
 use vek::{Aabr, Vec2};
-struct PoissonSampler {
+pub struct PoissonSampler {
     points: Vec<Vec2<f32>>,
     dimension: Vec2<f32>,
 }
@@ -101,6 +101,7 @@ impl PoissonSampler {
     }
 
     pub fn sample_multiple(&mut self, rng: &mut impl Rng, area: Option<Aabr<f32>>, k: u64) {
+        let mut created = 0;
         // No points
         // Sample area
         let area = area.unwrap_or(Aabr {
@@ -123,21 +124,27 @@ impl PoissonSampler {
 
         if self.points.is_empty() {
             self.points.push(area.center());
+            insert_grid(&mut grid, area.center(), 0);
+            created += 1;
         } else {
             // Which cells occupied by existing points already
             for (p_idx, p) in self.points.iter().enumerate() {
-                let grid_idx: Vec2<i32> = size_scaled * ((*p - min) / size).as_();
-                grid[grid_idx.x as usize * size_scaled.y as usize + grid_idx.y as usize] =
-                    Some(p_idx);
+                insert_grid(&mut grid, *p, p_idx);
             }
         }
 
+        let mut tries = 0;
         // Attempt to find cell next to target which is not occupied
-        for _ in 0..k {
+        while created < k {
+            if tries > 2 * k {
+                break;
+            }
+            tries += 1;
             let nr = rng.gen_range(radius..2.0 * radius);
             let nt = rng.gen_range(0.0..TAU);
 
-            let npos = nr * Vec2::new(nt.cos(), nt.sin());
+            let npos =
+                self.points.choose(rng).unwrap().clone() + nr * Vec2::new(nt.cos(), nt.sin());
             let ind: Vec2<i32> = size_scaled * ((npos - min) / size).as_();
 
             let mut free = true;
@@ -161,11 +168,13 @@ impl PoissonSampler {
 
             if free {
                 self.points.push(npos);
-                let grid_idx: Vec2<i32> = size_scaled * ((npos - min) / size).as_();
-                grid[grid_idx.x as usize * size_scaled.y as usize + grid_idx.y as usize] =
-                    Some(self.points.len() - 1);
-                break;
+                insert_grid(&mut grid, npos, self.points.len() - 1);
+                created += 1;
             }
         }
+    }
+
+    pub fn points(&self) -> &Vec<Vec2<f32>> {
+        &self.points
     }
 }

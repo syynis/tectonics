@@ -1,5 +1,4 @@
-use hashbrown::HashSet;
-use vek::{Aabr, Vec2};
+use vek::Vec2;
 
 pub struct Plate {
     pub pos: Vec2<f32>,

@@ -1,4 +1,3 @@
-use rand::distributions::Uniform;
 use vek::*;
 
 use crate::{plate::Plate, MapSizeLg};

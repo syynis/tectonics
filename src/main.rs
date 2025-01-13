@@ -1,4 +1,6 @@
 use minifb::*;
+use poisson::PoissonSampler;
+use rand::{rngs::StdRng, SeedableRng};
 use vek::Vec2;
 
 pub mod distance_transform;
@@ -52,6 +54,13 @@ pub fn vec2_as_uniform_idx(map_size_lg: MapSizeLg, idx: Vec2<i32>) -> usize {
 fn main() {
     let mut buf = vec![0; W * H];
     let mut win = Window::new("Tectonic Plates", W, H, WindowOptions::default()).unwrap();
+    let mut rng = StdRng::seed_from_u64(0);
+
+    let mut poisson = PoissonSampler::new(Vec2::new(W as f32, H as f32));
+
+    poisson.sample_multiple(&mut rng, None, 8);
+
+    println!("{:?}", poisson.points());
 
     while win.is_open() {
         win.update_with_buffer(&buf, W, H).unwrap();
