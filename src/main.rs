@@ -2,6 +2,7 @@ use minifb::*;
 use poisson::PoissonSampler;
 use rand::{rngs::StdRng, SeedableRng};
 use vek::Vec2;
+use voronoice::{BoundingBox, Point, VoronoiBuilder};
 
 pub mod distance_transform;
 pub mod grid;
@@ -12,6 +13,7 @@ pub mod segment;
 pub mod util;
 pub mod voronoi;
 
+const ZOOM_LG: usize = 0;
 const W: usize = 1024;
 const H: usize = 1024;
 
@@ -56,11 +58,56 @@ fn main() {
     let mut win = Window::new("Tectonic Plates", W, H, WindowOptions::default()).unwrap();
     let mut rng = StdRng::seed_from_u64(0);
 
-    let mut poisson = PoissonSampler::new(Vec2::new(W as f32, H as f32));
+    let mut poisson = PoissonSampler::new(Vec2::new((W >> ZOOM_LG) as f32, (H >> ZOOM_LG) as f32));
 
-    poisson.sample_multiple(&mut rng, None, 8);
+    poisson.sample_multiple(&mut rng, None, 8192, 256.0);
 
-    println!("{:?}", poisson.points());
+    let voronoi = VoronoiBuilder::default()
+        .set_sites(
+            poisson
+                .points()
+                .clone()
+                .iter()
+                .map(|e| Point {
+                    x: e.x as f64,
+                    y: H as f64 - e.y as f64,
+                })
+                .collect::<Vec<_>>(),
+        )
+        .set_bounding_box(BoundingBox::new(
+            Point { x: 512.0, y: 512.0 },
+            W as f64,
+            H as f64,
+        ))
+        .set_lloyd_relaxation_iterations(20)
+        .build()
+        .unwrap();
+
+    println!(
+        "points {}, cells {}",
+        poisson.points().len(),
+        voronoi.cells().len()
+    );
+
+    for x in 0..W {
+        for y in 0..H {
+            let p = Point {
+                x: x as f64,
+                y: H as f64 - y as f64,
+            };
+            let cell = voronoi.cell(0).iter_path(p).last().unwrap() % 256;
+            let cell = cell as u8;
+            set(
+                Vec2::new(x as i32, y as i32),
+                &mut buf,
+                (255 - cell, 255 - cell, 255 - cell),
+            );
+        }
+    }
+
+    for p in poisson.points() {
+        set((*p).as_(), &mut buf, (50, 50, 200));
+    }
 
     while win.is_open() {
         win.update_with_buffer(&buf, W, H).unwrap();
@@ -68,10 +115,21 @@ fn main() {
 }
 
 fn set(pos: Vec2<i32>, buf: &mut [u32], color: (u8, u8, u8)) {
-    let idx = (H - pos.y as usize - 1) * W + pos.x as usize;
-    if idx < W * H {
-        buf[idx] = u32::from_le_bytes([color.0, color.1, color.2, 0]);
+    let pos = pos * (1 << ZOOM_LG);
+    for zx in 0..(1 << ZOOM_LG) as i32 {
+        for zy in 0..(1 << ZOOM_LG) as i32 {
+            let pos = pos + Vec2::new(zx, zy);
+            let idx = (H - pos.y as usize - 1) * W + pos.x as usize;
+            if idx < W * H {
+                buf[idx] = u32::from_le_bytes([color.0, color.1, color.2, 0]);
+            }
+        }
     }
+
+    // let idx = (H - pos.y as usize - 1) * W + pos.x as usize;
+    // if idx < W * H {
+    //     buf[idx] = u32::from_le_bytes([color.0, color.1, color.2, 0]);
+    // }
 }
 
 fn cast_u32x8_u8x32(a: [u32; 8]) -> [u8; 32] {
