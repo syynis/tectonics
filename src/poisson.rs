@@ -43,7 +43,7 @@ impl PoissonSampler {
 
         let insert_grid = |grid: &mut Vec<Option<usize>>, p: Vec2<f32>, v: usize| {
             let grid_idx: Vec2<i32> = size_scaled * ((p - min) / size).as_();
-            grid[grid_idx.x as usize * size_scaled.y as usize + grid_idx.y as usize] = Some(v);
+            grid[grid_idx.y as usize * size_scaled.x as usize + grid_idx.x as usize] = Some(v);
         };
 
         // Which cells occupied by existing points already
@@ -81,7 +81,7 @@ impl PoissonSampler {
                     if i < 0 || i >= size_scaled.x || j < 0 || j >= size_scaled.y {
                         continue;
                     }
-                    if let Some(e) = grid[(i * size_scaled.y + j) as usize] {
+                    if let Some(e) = grid[(j * size_scaled.x + i) as usize] {
                         if self.points[e].distance_squared(npos) < radius.powi(2) {
                             free = false;
                             break;
@@ -103,13 +103,7 @@ impl PoissonSampler {
         return res;
     }
 
-    pub fn sample_multiple(
-        &mut self,
-        rng: &mut impl Rng,
-        area: Option<Aabr<f32>>,
-        k: u64,
-        radius: f32,
-    ) {
+    pub fn sample_multiple(&mut self, rng: &mut impl Rng, area: Option<Aabr<f32>>, radius: f32) {
         let mut created = 0;
         // No points
         // Sample area
@@ -122,12 +116,13 @@ impl PoissonSampler {
         // Cell size
         let length = radius / SQRT_2;
         // Sample area scaled by cell size
-        let size_scaled: Vec2<i32> = (size / length).ceil().as_();
+        let size_scaled = (size / length).ceil();
+        println!("scaled length {} scaled size {:?}", length, size_scaled);
         // Init grid
         let mut grid = vec![None; size_scaled.x as usize * size_scaled.y as usize];
         let insert_grid = |grid: &mut Vec<Option<usize>>, p: Vec2<f32>, v: usize| {
-            let grid_idx: Vec2<i32> = size_scaled * ((p - min) / size).as_();
-            grid[grid_idx.x as usize * size_scaled.y as usize + grid_idx.y as usize] = Some(v);
+            let grid_idx: Vec2<i32> = (size_scaled * (p - min) / size).as_();
+            grid[grid_idx.y as usize * size_scaled.x as usize + grid_idx.x as usize] = Some(v);
         };
 
         if self.points.is_empty() {
@@ -143,10 +138,7 @@ impl PoissonSampler {
 
         let mut tries = 0;
         // Attempt to find cell next to target which is not occupied
-        while created < k {
-            if tries > self.points.len() {
-                break;
-            }
+        while tries < self.points.len() {
             tries += 1;
             let nr = rng.gen_range(radius..2.0 * radius);
             let nt = rng.gen_range(0.0..TAU);
@@ -155,16 +147,16 @@ impl PoissonSampler {
             if !area.contains_point(npos) {
                 continue;
             }
-            let ind: Vec2<i32> = size_scaled * ((npos - min) / size).as_();
+            let ind: Vec2<i32> = (size_scaled * (npos - min) / size).as_();
 
             let mut free = true;
 
             for i in ind.x - 2..=ind.x + 2 {
                 for j in ind.y - 2..=ind.y + 2 {
-                    if i < 0 || i >= size_scaled.x || j < 0 || j >= size_scaled.y {
+                    if i < 0 || i >= size_scaled.x as i32 || j < 0 || j >= size_scaled.y as i32 {
                         continue;
                     }
-                    if let Some(e) = grid[(i * size_scaled.y + j) as usize] {
+                    if let Some(e) = grid[(j * size_scaled.x as i32 + i) as usize] {
                         if self.points[e].distance_squared(npos) < radius.powi(2) {
                             free = false;
                             break;
@@ -187,5 +179,9 @@ impl PoissonSampler {
 
     pub fn points(&self) -> &Vec<Vec2<f32>> {
         &self.points
+    }
+
+    pub fn sort(&mut self) {
+        self.points.sort_by(|a, b| a.y.total_cmp(&b.y));
     }
 }

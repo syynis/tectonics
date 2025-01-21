@@ -1,8 +1,10 @@
+use std::time::Instant;
+
 use minifb::*;
 use poisson::PoissonSampler;
 use rand::{rngs::StdRng, SeedableRng};
 use vek::Vec2;
-use voronoice::{BoundingBox, Point, VoronoiBuilder};
+use voronoi::make_indexmap;
 
 pub mod distance_transform;
 pub mod grid;
@@ -60,42 +62,20 @@ fn main() {
 
     let mut poisson = PoissonSampler::new(Vec2::new((W >> ZOOM_LG) as f32, (H >> ZOOM_LG) as f32));
 
-    poisson.sample_multiple(&mut rng, None, 8192, 256.0);
+    poisson.sample_multiple(&mut rng, None, 32.0);
+    poisson.sort();
 
-    let voronoi = VoronoiBuilder::default()
-        .set_sites(
-            poisson
-                .points()
-                .clone()
-                .iter()
-                .map(|e| Point {
-                    x: e.x as f64,
-                    y: H as f64 - e.y as f64,
-                })
-                .collect::<Vec<_>>(),
-        )
-        .set_bounding_box(BoundingBox::new(
-            Point { x: 512.0, y: 512.0 },
-            W as f64,
-            H as f64,
-        ))
-        .set_lloyd_relaxation_iterations(20)
-        .build()
-        .unwrap();
-
+    println!("points {}", poisson.points().len(),);
+    let before = Instant::now();
+    let mut index_map = make_indexmap(poisson.points(), Vec2::new(W, H));
+    let after = Instant::now();
     println!(
-        "points {}, cells {}",
-        poisson.points().len(),
-        voronoi.cells().len()
+        "Computing index map took {} seconds",
+        (after - before).as_secs_f32()
     );
-
     for x in 0..W {
         for y in 0..H {
-            let p = Point {
-                x: x as f64,
-                y: H as f64 - y as f64,
-            };
-            let cell = voronoi.cell(0).iter_path(p).last().unwrap() % 256;
+            let cell = index_map[y * W + x] % 256;
             let cell = cell as u8;
             set(
                 Vec2::new(x as i32, y as i32),
@@ -111,6 +91,9 @@ fn main() {
 
     while win.is_open() {
         win.update_with_buffer(&buf, W, H).unwrap();
+        if win.is_key_pressed(Key::Q, KeyRepeat::No) {
+            break;
+        }
     }
 }
 
