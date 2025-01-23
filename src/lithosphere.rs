@@ -1,6 +1,6 @@
 use vek::*;
 
-use crate::{plate::Plate, MapSizeLg};
+use crate::{plate::Plate, segment::Segment, MapSizeLg};
 
 #[derive(Default, Clone, Copy)]
 pub struct GlobalParameters {
@@ -13,12 +13,12 @@ pub struct GlobalParameters {
 
 pub struct Lithosphere {
     pub plates: Vec<Plate>,
-    pub occ_map: Vec<Option<usize>>,
-    pub height: Vec<f32>,
+    pub segments: Vec<Segment>,
+    pub heatmap: Vec<f64>,
+    pub index_map: Vec<usize>,
     pub iteration: u32,
     pub dimension: Vec2<i32>,
-    pub dimension_lg: MapSizeLg,
-    pub parameters: GlobalParameters,
+    // pub parameters: GlobalParameters,
 }
 
 impl Lithosphere {

@@ -1,18 +1,18 @@
 use vek::Vec2;
 
 pub struct Segment {
-    pos: Vec2<f32>,
-    area: f32,
-    vel: Vec2<f32>,
-    mass: f32,
-    thickness: f32,
-    density: f32,
-    height: f32,
+    pub pos: Vec2<f32>,
+    pub area: f32,
+    pub vel: Vec2<f32>,
+    pub mass: f32,
+    pub thickness: f32,
+    pub density: f32,
+    pub height: f32,
     growth: f32,
 
     parent: usize,
 
-    alive: bool,
+    pub alive: bool,
     colliding: bool,
 }
 

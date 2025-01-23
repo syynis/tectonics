@@ -1,8 +1,15 @@
-use std::time::Instant;
+use std::{
+    ops::{Add, Mul},
+    time::Instant,
+};
 
+use lithosphere::Lithosphere;
 use minifb::*;
+use noise::{core::perlin::perlin_2d, Fbm, MultiFractal, NoiseFn, Perlin};
+use plate::Plate;
 use poisson::PoissonSampler;
-use rand::{rngs::StdRng, SeedableRng};
+use rand::{rngs::StdRng, seq::SliceRandom, Rng, SeedableRng};
+use segment::Segment;
 use vek::Vec2;
 use voronoi::make_indexmap;
 
@@ -62,7 +69,7 @@ fn main() {
 
     let mut poisson = PoissonSampler::new(Vec2::new((W >> ZOOM_LG) as f32, (H >> ZOOM_LG) as f32));
 
-    poisson.sample_multiple(&mut rng, None, 32.0);
+    poisson.sample_multiple(&mut rng, None, 24.0);
     poisson.sort();
 
     println!("points {}", poisson.points().len(),);
@@ -77,19 +84,105 @@ fn main() {
         for y in 0..H {
             let cell = index_map[y * W + x] % 256;
             let cell = cell as u8;
-            set(
-                Vec2::new(x as i32, y as i32),
-                &mut buf,
-                (255 - cell, 255 - cell, 255 - cell),
-            );
+            // set(Vec2::new(x as i32, y as i32), &mut buf, (cell, cell, cell));
         }
     }
 
+    // for p in poisson.points() {
+    //     set((*p).as_(), &mut buf, (50, 50, 200));
+    // }
+
+    let mut plate_points = PoissonSampler::new(Vec2::new(W as f32, H as f32));
+    plate_points.sample_multiple(&mut rng, None, 64.0);
+
+    let mut plates: Vec<Plate> = plate_points
+        .points()
+        .choose_multiple(&mut rng, 12)
+        .map(|p| Plate::new(*p))
+        .collect();
+
+    let mut segments = Vec::new();
     for p in poisson.points() {
-        set((*p).as_(), &mut buf, (50, 50, 200));
+        let (plate_idx, plate) = plates
+            .iter_mut()
+            .enumerate()
+            .min_by(|(_, plate), (_, plate2)| {
+                plate
+                    .pos
+                    .distance_squared(*p)
+                    .partial_cmp(&plate2.pos.distance_squared(*p))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .unwrap();
+        let segment = Segment::new(*p, plate_idx);
+        let segment_idx = segments.len();
+
+        segments.push(segment);
+        plate.segments.push(segment_idx);
     }
 
+    for (i, p) in plates.iter().enumerate() {
+        println!("{}", p.segments.len());
+        let i = (i + 1) as u8;
+        let color = (i, i, i);
+        // set(p.pos.as_(), &mut buf, color);
+
+        for child in &p.segments {
+            let s = &segments[*child];
+            // set(s.pos.as_(), &mut buf, color);
+        }
+    }
+
+    let noise: Fbm<Perlin> = Fbm::new(0)
+        .set_octaves(6)
+        .set_persistence(0.5)
+        .set_frequency(1.0 / (((1 << 6) * 64) as f64))
+        .set_lacunarity(2.0);
+    let mut heatmap = vec![0.0; W * H];
+    for i in 0..W {
+        for j in 0..H {
+            heatmap[j * W + i] = noise
+                .get((Vec2::new(i as f64, j as f64) * 10.0).into_array())
+                .clamp(-1.0, 1.0)
+                .mul(0.5)
+                .add(0.5);
+        }
+    }
+    for i in 0..W {
+        for j in 0..H {
+            let heat = heatmap[j * W + i] * 255.0;
+            let heat = heat as u8;
+            set(Vec2::new(i as i32, j as i32), &mut buf, (heat, heat, heat))
+        }
+    }
+
+    // let mut lithospere = Lithosphere {
+    //     plates,
+    //     segments,
+    //     heatmap,
+    //     index_map,
+    //     iteration: 0,
+    //     dimension: Vec2::new(W as i32, H as i32),
+    // };
+
     while win.is_open() {
+        for plate in plates.iter_mut() {
+            plate.step(&mut segments, &heatmap);
+            plate.recenter(&mut segments);
+        }
+
+        for i in 0..W {
+            for j in 0..H {
+                let idx = index_map[j * W + i];
+                let segment_height = segments[idx].height * 255.0;
+                set(
+                    Vec2::new(i as i32, j as i32),
+                    &mut buf,
+                    (0, 0, segment_height as u8),
+                );
+            }
+        }
+
         win.update_with_buffer(&buf, W, H).unwrap();
         if win.is_key_pressed(Key::Q, KeyRepeat::No) {
             break;
