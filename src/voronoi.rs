@@ -1,30 +1,31 @@
 use std::ops::RangeInclusive;
 
+use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use vek::{Clamp, Vec2};
 
 // Points should be ordered
 pub fn make_indexmap(points: &Vec<Vec2<f32>>, dim: Vec2<usize>) -> Vec<usize> {
     (0..dim.y)
+        .into_par_iter()
         .map(|y| assign_index_row(points, y, dim))
         .flatten()
         .collect()
 }
 
-fn assign_index_row(
-    points: &Vec<Vec2<f32>>,
-    row: usize,
-    dim: Vec2<usize>,
-) -> impl Iterator<Item = usize> + '_ {
+fn assign_index_row(points: &Vec<Vec2<f32>>, row: usize, dim: Vec2<usize>) -> Vec<usize> {
     // If points are ordered and distributed evenly this is a decent guess for the nearest point
     let mut guess =
-        (((row * points.len()) as f64 / dim.x as f64) as usize).clamped(0, points.len() - 1);
+        (((row * points.len()) as f64 / dim.y as f64) as usize).clamped(0, points.len() - 1);
 
-    (0..dim.x).map(move |x| {
-        let p = Vec2::new(x, row);
-        let nearest = find_nearest(&points, p, guess);
-        guess = nearest;
-        nearest
-    })
+    (0..dim.x)
+        .map(|x| {
+            let p = Vec2::new(x, row);
+            let nearest = find_nearest(&points, p);
+            // let nearest = find_nearest2(&points, p, guess, dim);
+            guess = nearest;
+            nearest
+        })
+        .collect()
 }
 
 fn find_nearest2(points: &Vec<Vec2<f32>>, p: Vec2<usize>, guess: usize, dim: Vec2<usize>) -> usize {
@@ -33,6 +34,8 @@ fn find_nearest2(points: &Vec<Vec2<f32>>, p: Vec2<usize>, guess: usize, dim: Vec
     let dist = p.distance(points[guess]).ceil() as usize;
     let lower_bound = p_orig.y.saturating_sub(dist);
     let upper_bound = (p_orig.y + dist).clamped(0, dim.y);
+
+    println!("{p}, {dist}, {lower_bound}, {upper_bound}");
 
     let search_range = compute_search_range(points, lower_bound, upper_bound, dim);
 
@@ -51,7 +54,7 @@ fn find_nearest2(points: &Vec<Vec2<f32>>, p: Vec2<usize>, guess: usize, dim: Vec
     closest
 }
 
-fn find_nearest(points: &Vec<Vec2<f32>>, p: Vec2<usize>, _guess: usize) -> usize {
+fn find_nearest(points: &Vec<Vec2<f32>>, p: Vec2<usize>) -> usize {
     let p: Vec2<f32> = p.as_();
     points
         .iter()
@@ -72,24 +75,32 @@ fn compute_search_range(
         index: usize,
         y: usize,
     }
-    let lower = if points[0].y <= lower_bound as f32 {
+    let first = 0;
+    let last = points.len() - 1;
+    let lower = if points[first].y >= lower_bound as f32 {
         0
     } else {
-        let mut min = Border { index: 0, y: 0 };
+        let mut min = Border { index: first, y: 0 };
         let mut max = Border {
-            index: points.len() - 1,
+            index: last,
             y: dim.y,
         };
+        assert!(lower_bound > min.y);
+        assert!(lower_bound < max.y);
+
         let mut res = None;
         loop {
             let current = ((points.len() as f32 * (lower_bound - min.y) as f32
                 / (max.y - min.y) as f32) as usize)
                 .clamped(min.index + 1, max.index - 1);
+            assert!(current >= first);
+            assert!(current <= last);
             let current_y = points[current].y.floor() as usize;
             if current_y >= lower_bound {
                 let prev_y = points[current - 1].y.floor() as usize;
                 if prev_y < lower_bound {
                     res = Some(current);
+                    break;
                 }
                 min = Border {
                     index: current,
@@ -106,6 +117,48 @@ fn compute_search_range(
         res.unwrap()
     };
 
-    let upper = 10;
+    let minimum = points[lower].y.floor() as usize;
+    assert!(upper_bound >= minimum);
+    let upper = if points[last].y <= upper_bound as f32 {
+        last
+    } else {
+        let mut min = Border {
+            index: first,
+            y: minimum,
+        };
+        let mut max = Border {
+            index: last,
+            y: dim.y,
+        };
+        assert!(upper_bound >= min.y);
+        assert!(upper_bound <= max.y);
+
+        let mut res = None;
+        loop {
+            let current = ((points.len() as f32 * (upper_bound - min.y) as f32
+                / (max.y - min.y) as f32) as usize)
+                .clamped(min.index + 1, max.index - 1);
+            assert!(current >= first);
+            assert!(current <= last);
+            let current_y = points[current].y.floor() as usize;
+            if current_y <= upper_bound {
+                let next_y = points[current + 1].y.floor() as usize;
+                if next_y > upper_bound {
+                    res = Some(current);
+                    break;
+                }
+                min = Border {
+                    index: current,
+                    y: current_y,
+                };
+            } else {
+                max = Border {
+                    index: current,
+                    y: current_y,
+                };
+            }
+        }
+        res.unwrap()
+    };
     lower..=upper
 }
