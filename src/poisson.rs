@@ -1,4 +1,4 @@
-use std::f32::consts::{PI, SQRT_2, TAU};
+use std::f32::consts::{SQRT_2, TAU};
 
 use rand::{seq::SliceRandom, Rng};
 use vek::{Aabr, Vec2};
@@ -104,7 +104,6 @@ impl PoissonSampler {
     }
 
     pub fn sample_multiple(&mut self, rng: &mut impl Rng, area: Option<Aabr<f32>>, radius: f32) {
-        let mut created = 0;
         // No points
         // Sample area
         let area = area.unwrap_or(Aabr {
@@ -128,7 +127,6 @@ impl PoissonSampler {
         if self.points.is_empty() {
             self.points.push(area.center());
             insert_grid(&mut grid, area.center(), 0);
-            created += 1;
         } else {
             // Which cells occupied by existing points already
             for (p_idx, p) in self.points.iter().enumerate() {
@@ -171,7 +169,6 @@ impl PoissonSampler {
             if free {
                 insert_grid(&mut grid, npos, self.points.len());
                 self.points.push(npos);
-                created += 1;
                 tries = 0;
             }
         }

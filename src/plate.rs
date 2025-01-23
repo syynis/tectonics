@@ -44,7 +44,7 @@ impl Plate {
             let temp = heatmap[seg_pos.y * 1024 + seg_pos.x] as f32;
             let rate = self.growth * (1.0 - temp);
             let mut g = rate * (1.0 - temp - seg.density * seg.thickness);
-            if (g < 0.0) {
+            if g < 0.0 {
                 g *= 0.05;
             }
             let d = langmuir(3.0, 1.0 - temp);
@@ -112,9 +112,9 @@ impl Plate {
             let dir = s.pos - (self.pos - dt * self.vel);
             // let angle = dir.angle_between(self.rot - dt * self.ang_vel);
             let angle = calc_angle(dir) - self.rot - dt * self.ang_vel;
-            let var_name = self.rot + angle;
-            let eff_vec = dir.magnitude() * Vec2::new(var_name.cos(), var_name.sin());
-            s.vel = (self.pos + eff_vec - s.pos);
+            let new_dir = self.rot + angle;
+            let eff_vec = dir.magnitude() * Vec2::new(new_dir.cos(), new_dir.sin());
+            s.vel = self.pos + eff_vec - s.pos;
             s.pos = self.pos + eff_vec;
         }
     }
@@ -134,21 +134,19 @@ impl Plate {
         self.mass = new_mass;
     }
 
-    fn delete_oob_segments(&mut self, segments: &mut Vec<Segment>, dim: Vec2<i32>) {
+    pub fn delete_oob_segments(&mut self, segments: &mut Vec<Segment>, dim: Vec2<i32>) {
         let dim: Vec2<f32> = dim.as_();
-        let mut to_remove = Vec::new();
-        for (s_id, s) in self.segments.iter().enumerate() {
+        let mut any_deleted = false;
+        for s in &self.segments {
             let s = &mut segments[*s];
             if !((0.0..=dim.x).contains(&s.pos.x) && (0.0..=dim.y).contains(&s.pos.y)) {
                 s.alive = false;
-                to_remove.push(s_id);
+                any_deleted = true;
             }
         }
-        for s_id in to_remove.iter().rev() {
-            self.segments.remove(*s_id);
-        }
+        self.segments.retain(|s| segments[*s].alive);
 
-        if !to_remove.is_empty() {
+        if any_deleted {
             self.recenter(segments);
         }
     }

@@ -1,6 +1,6 @@
 use std::ops::RangeInclusive;
 
-use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use vek::{Clamp, Vec2};
 
 // Points should be ordered

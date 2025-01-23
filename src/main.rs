@@ -5,10 +5,10 @@ use std::{
 
 use lithosphere::Lithosphere;
 use minifb::*;
-use noise::{core::perlin::perlin_2d, Fbm, MultiFractal, NoiseFn, Perlin};
+use noise::{Fbm, MultiFractal, NoiseFn, Perlin};
 use plate::Plate;
 use poisson::PoissonSampler;
-use rand::{rngs::StdRng, seq::SliceRandom, Rng, SeedableRng};
+use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
 use segment::Segment;
 use vek::Vec2;
 use voronoi::make_indexmap;
@@ -74,7 +74,7 @@ fn main() {
 
     println!("points {}", poisson.points().len(),);
     let before = Instant::now();
-    let mut index_map = make_indexmap(poisson.points(), Vec2::new(W, H));
+    let index_map = make_indexmap(poisson.points(), Vec2::new(W, H));
     let after = Instant::now();
     println!(
         "Computing index map took {} seconds",
@@ -156,25 +156,25 @@ fn main() {
         }
     }
 
-    // let mut lithospere = Lithosphere {
-    //     plates,
-    //     segments,
-    //     heatmap,
-    //     index_map,
-    //     iteration: 0,
-    //     dimension: Vec2::new(W as i32, H as i32),
-    // };
+    let mut lithospere = Lithosphere {
+        plates,
+        segments,
+        heatmap,
+        index_map,
+        iteration: 0,
+        dimension: Vec2::new(W as i32, H as i32),
+    };
 
     while win.is_open() {
-        for plate in plates.iter_mut() {
-            plate.step(&mut segments, &heatmap);
-            plate.recenter(&mut segments);
+        for plate in lithospere.plates.iter_mut() {
+            plate.step(&mut lithospere.segments, &lithospere.heatmap);
+            plate.recenter(&mut lithospere.segments);
         }
 
         for i in 0..W {
             for j in 0..H {
-                let idx = index_map[j * W + i];
-                let segment_height = segments[idx].height * 255.0;
+                let idx = lithospere.index_map[j * W + i];
+                let segment_height = lithospere.segments[idx].height * 255.0;
                 set(
                     Vec2::new(i as i32, j as i32),
                     &mut buf,
