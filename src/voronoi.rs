@@ -61,8 +61,7 @@ fn find_nearest(points: &Vec<Vec2<f32>>, p: Vec2<usize>) -> usize {
         .map(|e| e.distance_squared(p))
         .enumerate()
         .min_by(|(_, d1), (_, d2)| d1.partial_cmp(d2).unwrap_or(std::cmp::Ordering::Equal))
-        .unwrap()
-        .0
+        .map_or(0, |e| e.0)
 }
 
 fn compute_search_range(

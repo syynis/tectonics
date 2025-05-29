@@ -35,15 +35,18 @@ impl Plate {
         }
     }
 
-    pub fn step(&mut self, segments: &mut Vec<Segment>, heatmap: &Vec<f64>) {
+    pub fn step(&mut self, segments: &mut Vec<Segment>, heatmap: &Vec<f64>, dim: Vec2<i32>) {
         // Update heights
         let langmuir = |k, x| -> f32 { k * x / (1.0 + k * x) };
         for seg_idx in &self.segments {
             let seg = &mut segments[*seg_idx];
+            if !seg.alive {
+                continue;
+            }
             let seg_pos: Vec2<usize> = seg.pos.as_();
             let temp = heatmap[seg_pos.y * 1024 + seg_pos.x] as f32;
             let rate = self.growth * (1.0 - temp);
-            let mut g = rate * (1.0 - temp - seg.density * seg.thickness);
+            let mut g = rate * (1.0 - temp) * (1.0 - temp - seg.density * seg.thickness);
             if g < 0.0 {
                 g *= 0.05;
             }
@@ -57,11 +60,20 @@ impl Plate {
         let mut acc = Vec2::zero();
         let mut torque = 0.0;
 
-        let calc_force = move |pos| -> Vec2<f32> {
+        let calc_force = move |pos: Vec2<i32>| -> Vec2<f32> {
             let mut fx = 0.0;
             let mut fy = 0.0;
 
-            Vec2::new(fx, fy)
+            if pos.x > 0 && pos.x < dim.x - 1 && pos.y > 0 && pos.y < dim.y - 1 {
+                fx = (heatmap[(pos.y * dim.x + pos.x + 1) as usize]
+                    - heatmap[(pos.y * dim.x + pos.x - 1) as usize])
+                    / 2.0;
+                fy = -(heatmap[((pos.y + 1) * dim.x + pos.x) as usize]
+                    - heatmap[((pos.y - 1) * dim.x + pos.x) as usize])
+                    / 2.0;
+            }
+
+            Vec2::new(fx as f32, fy as f32)
         };
 
         let calc_angle = |v: Vec2<f32>| -> f32 {
@@ -83,23 +95,36 @@ impl Plate {
 
         for s in &self.segments {
             let s = &mut segments[*s];
-            let force = calc_force(s.pos);
+            if !s.alive {
+                continue;
+            }
+            let force = calc_force(s.pos.as_());
             let dir = s.pos - self.pos;
 
             acc -= self.convection * force;
             torque -= self.convection
                 * dir.magnitude()
                 * force.magnitude()
-                // * (force.angle_between(dir)).sin()
-                * (calc_angle(force)-calc_angle(dir)).sin()
+                * (calc_angle(force) - calc_angle(dir)).sin()
         }
 
-        let dt = 0.025;
+        // let dt = 0.025;
+        let dt = 0.1;
+        println!("old pos {}", self.pos);
+        println!("old vel {}", self.vel);
+        println!("old ang_vel {}", self.ang_vel);
+        println!("old rot {}", self.rot);
+        println!("mass {}", self.mass);
+        println!("inertia {}", self.inertia);
         self.vel += dt * acc / self.mass;
         self.ang_vel += dt * torque / self.inertia;
         self.pos += dt * self.vel;
         self.rot += dt * self.ang_vel;
 
+        println!("new pos {}", self.pos);
+        println!("new vel {}", self.vel);
+        println!("new ang_vel {}", self.ang_vel);
+        println!("new rot {}", self.rot);
         if self.rot > TAU {
             self.rot -= TAU;
         }
@@ -109,29 +134,38 @@ impl Plate {
 
         for s in &self.segments {
             let s = &mut segments[*s];
+            if !s.alive {
+                continue;
+            }
             let dir = s.pos - (self.pos - dt * self.vel);
-            // let angle = dir.angle_between(self.rot - dt * self.ang_vel);
-            let angle = calc_angle(dir) - self.rot - dt * self.ang_vel;
-            let new_dir = self.rot + angle;
-            let eff_vec = dir.magnitude() * Vec2::new(new_dir.cos(), new_dir.sin());
+            let angle = calc_angle(dir) - (self.rot - dt * self.ang_vel);
+            let new_angle = self.rot + angle;
+            let eff_vec = dir.magnitude() * Vec2::new(new_angle.cos(), new_angle.sin());
             s.vel = self.pos + eff_vec - s.pos;
             s.pos = self.pos + eff_vec;
         }
     }
     pub fn recenter(&mut self, segments: &mut Vec<Segment>) {
+        println!("recenter");
         let mut new_pos = Vec2::zero();
         let mut new_inertia = 0.0;
         let mut new_mass = 0.0;
+        let mut num_segments = 0;
         for s in &self.segments {
             let s = &mut segments[*s];
+            if !s.alive {
+                continue;
+            }
             new_pos += s.pos;
             new_mass += s.mass;
             new_inertia += (new_pos - s.pos).magnitude_squared() * s.mass;
+            num_segments += 1;
         }
-        new_pos /= self.segments.len() as f32;
+        new_pos /= num_segments as f32;
         self.pos = new_pos;
         self.inertia = new_inertia;
         self.mass = new_mass;
+        println!("pos {new_pos}, mass {new_mass}, inertia {new_inertia}");
     }
 
     pub fn delete_oob_segments(&mut self, segments: &mut Vec<Segment>, dim: Vec2<i32>) {
@@ -139,7 +173,7 @@ impl Plate {
         let mut any_deleted = false;
         for s in &self.segments {
             let s = &mut segments[*s];
-            if !((0.0..=dim.x).contains(&s.pos.x) && (0.0..=dim.y).contains(&s.pos.y)) {
+            if !((0.0..dim.x).contains(&s.pos.x) && (0.0..dim.y).contains(&s.pos.y)) {
                 s.alive = false;
                 any_deleted = true;
             }

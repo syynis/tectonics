@@ -69,10 +69,10 @@ fn main() {
 
     let mut poisson = PoissonSampler::new(Vec2::new((W >> ZOOM_LG) as f32, (H >> ZOOM_LG) as f32));
 
-    poisson.sample_multiple(&mut rng, None, 24.0);
+    poisson.sample_multiple(&mut rng, None, 32.0);
     poisson.sort();
 
-    println!("points {}", poisson.points().len(),);
+    println!("points {}", poisson.points().len());
     let before = Instant::now();
     let index_map = make_indexmap(poisson.points(), Vec2::new(W, H));
     let after = Instant::now();
@@ -97,7 +97,7 @@ fn main() {
 
     let mut plates: Vec<Plate> = plate_points
         .points()
-        .choose_multiple(&mut rng, 12)
+        .choose_multiple(&mut rng, 4)
         .map(|p| Plate::new(*p))
         .collect();
 
@@ -164,13 +164,10 @@ fn main() {
         iteration: 0,
         dimension: Vec2::new(W as i32, H as i32),
     };
+    lithospere.init();
 
     while win.is_open() {
-        for plate in lithospere.plates.iter_mut() {
-            plate.step(&mut lithospere.segments, &lithospere.heatmap);
-            plate.recenter(&mut lithospere.segments);
-        }
-
+        lithospere.step();
         for i in 0..W {
             for j in 0..H {
                 let idx = lithospere.index_map[j * W + i];
